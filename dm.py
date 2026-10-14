@@ -18,11 +18,16 @@ from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.combine import SMOTEENN
 import warnings
+import argparse
+import json
+from datetime import datetime
 
 warnings.filterwarnings('ignore')
 
-# 输出目录：默认与脚本同目录，可通过环境变量 ML_OUTPUT_DIR 覆盖
+# 输出目录：默认与脚本同目录，可通过环境变量 ML_OUTPUT_DIR 或 --out 覆盖
 OUTPUT_DIR = os.environ.get("ML_OUTPUT_DIR", os.path.dirname(os.path.abspath(__file__)))
+# 全局随机种子：保证实验可复现，可通过 --seed 覆盖
+SEED = 42
 
 
 # ==================== 加强中文乱码处理（全局生效） ====================
@@ -73,7 +78,7 @@ def load_credit_card_data():
 
         # 生成模拟数据：正常与欺诈样本分布高度重叠，仅少数"信号特征"存在中等偏移，
         # 模拟真实信用卡欺诈检测中"难分样本多、需模型挖掘微弱信号"的场景（不再是线性可分）
-        np.random.seed(42)
+        np.random.seed(SEED)
         n_samples = 20000
         n_features = 28  # V1-V28
         fraud_rate = 0.03
@@ -127,7 +132,7 @@ class RiskFeatureEngineer(BaseEstimator, TransformerMixin):
 
     def fit(self, X, y=None):
         # 拟合分位数转换
-        self.quantile_transformer = QuantileTransformer(n_quantiles=100, random_state=42)
+        self.quantile_transformer = QuantileTransformer(n_quantiles=100, random_state=SEED)
         self.quantile_transformer.fit(X[['Amount']])
         return self
 
@@ -224,7 +229,7 @@ def preprocess_data(df):
         # 适配UCI数据，构造替代衍生特征
         X_risk = X_imputed.copy()
         if 'LIMIT_BAL' in X_risk.columns:
-            X_risk['Amount_Quantile'] = QuantileTransformer(n_quantiles=100, random_state=42).fit_transform(
+            X_risk['Amount_Quantile'] = QuantileTransformer(n_quantiles=100, random_state=SEED).fit_transform(
                 X_risk[['LIMIT_BAL']])
             X_risk['V1_Amount'] = X_risk['PAY_1'] * X_risk['LIMIT_BAL']
             X_risk['Amount_IsNight'] = X_risk['LIMIT_BAL'] * X_risk['Is_Night']
@@ -285,7 +290,7 @@ def train_stacking_model(X, y):
     print("\n===================== 开始分层划分数据集 =====================")
     # 分层划分（保持类别分布）
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+        X, y, test_size=0.2, random_state=SEED, stratify=y
     )
     feature_names = X.columns.tolist()
     X_train.columns = feature_names
@@ -301,8 +306,8 @@ def train_stacking_model(X, y):
 
     # 仅对训练集做混合采样（SMOTE 过采样 + 随机欠采样 → ≈1:1），测试集不参与
     print("\n===================== 仅对训练集做混合采样（SMOTE↑ + 欠采样↓） =====================")
-    smote = SMOTE(random_state=42)
-    undersampler = RandomUnderSampler(random_state=42)
+    smote = SMOTE(random_state=SEED)
+    undersampler = RandomUnderSampler(random_state=SEED)
     X_tr, y_tr = smote.fit_resample(X_train, y_train)
     X_tr, y_tr = undersampler.fit_resample(X_tr, y_tr)
     X_tr = pd.DataFrame(X_tr, columns=feature_names)
@@ -311,12 +316,12 @@ def train_stacking_model(X, y):
 
     # 基模型（mlxtend 仅支持纯模型列表）
     base_models = [
-        RandomForestClassifier(n_estimators=100, random_state=42),
-        GradientBoostingClassifier(n_estimators=100, random_state=42),
-        LogisticRegression(random_state=42)
+        RandomForestClassifier(n_estimators=100, random_state=SEED),
+        GradientBoostingClassifier(n_estimators=100, random_state=SEED),
+        LogisticRegression(random_state=SEED)
     ]
     # 元模型
-    meta_model = LogisticRegression(random_state=42)
+    meta_model = LogisticRegression(random_state=SEED)
     stacking_model = StackingClassifier(
         classifiers=base_models,
         meta_classifier=meta_model,
@@ -428,9 +433,20 @@ def evaluate_model(model, X_test, y_test):
     plt.close()
     print(f"✅ 评估完成 | 可视化图片已保存：{eval_path}")
 
+    # 以结构化字典返回核心指标，便于导出 results.json 供复现与汇报
+    metrics = {
+        "auc": float(auc_score),
+        "pr_auc": float(pr_auc),
+        "best_f1_threshold": float(best_thr),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+    }
+    return metrics
+
 
 # ==================== SHAP可解释性分析（彻底解决所有错误） ====================
-def shap_interpretation(model, X_train, X_test, feature_names):
+def shap_interpretation(model, X_train, y_train, X_test, feature_names):
     """SHAP可解释性分析（彻底解决形状不匹配和索引错误）"""
     print("\n===================== 开始SHAP可解释性分析 =====================")
     # 1. 强制统一列名
@@ -439,7 +455,7 @@ def shap_interpretation(model, X_train, X_test, feature_names):
 
     # 2. 选择样本（避免计算量过大，用训练集小样本更稳定）
     sample_size = min(100, X_test.shape[0])
-    X_shap_sample = X_test.sample(sample_size, random_state=42).reset_index(drop=True)
+    X_shap_sample = X_test.sample(sample_size, random_state=SEED).reset_index(drop=True)
 
     # 3. 用真实训练数据训练一个完整的随机森林作为 SHAP 解释对象
     #    （mlxtend 的 StackingClassifier 在 fit 时会克隆基学习器，
@@ -447,7 +463,7 @@ def shap_interpretation(model, X_train, X_test, feature_names):
     #      因此这里用真实标签重新训练一个等架构的 RF 用于可解释性分析，
     #      绝对不使用伪造标签）
     print("⚠️ 正在用真实训练数据训练 SHAP 解释模型（随机森林）...")
-    shap_model = RandomForestClassifier(n_estimators=100, random_state=42)
+    shap_model = RandomForestClassifier(n_estimators=100, random_state=SEED)
     shap_model.fit(X_train, y_train)
 
     # 4. 生成SHAP值并彻底处理形状
@@ -523,7 +539,28 @@ def shap_interpretation(model, X_train, X_test, feature_names):
 
 
 # ==================== 主函数 ====================
-if __name__ == "__main__":
+def main(argv=None):
+    """端到端入口：解析命令行参数 → 训练 → 评估 → (可选) SHAP → 导出 results.json"""
+    global OUTPUT_DIR, SEED
+    parser = argparse.ArgumentParser(
+        description="信用卡违约/欺诈检测：端到端训练、评估与 SHAP 可解释性流水线")
+    parser.add_argument("--real-data", action="store_true",
+                        help="下载 UCI 真实数据集（约150MB）；默认使用内置模拟数据以保证离线可复现")
+    parser.add_argument("--out", default=None,
+                        help="图表与 results.json 输出目录（默认：脚本所在目录）")
+    parser.add_argument("--seed", type=int, default=SEED,
+                        help=f"随机种子（默认 {SEED}，保证实验可复现）")
+    parser.add_argument("--no-shap", action="store_true",
+                        help="跳过 SHAP 可解释性分析（加速调试）")
+    args = parser.parse_args(argv)
+
+    SEED = args.seed
+    if args.out:
+        OUTPUT_DIR = os.path.abspath(args.out)
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+    if args.real_data:
+        os.environ["CCFD_USE_REAL"] = "1"
+
     # 1. 初始化环境
     init_environment()
     print("✅ 所有机器学习库导入完成\n")
@@ -531,17 +568,42 @@ if __name__ == "__main__":
     # 2. 加载数据
     df = load_credit_card_data()
 
-    # 3. 数据预处理（返回DataFrame和特征名称）
+    # 3. 数据预处理（返回 DataFrame 和特征名称）
     X_processed, y_processed, feature_names = preprocess_data(df)
 
-    # 4. 模型训练
+    # 4. 模型训练（先划分后采样，杜绝数据泄露）
     final_model, X_train, X_test, y_train, y_test = train_stacking_model(X_processed, y_processed)
 
-    # 5. 模型评估
-    evaluate_model(final_model, X_test, y_test)
+    # 5. 模型评估（阈值无关指标 + 最优 F1 阈值分类指标）
+    metrics = evaluate_model(final_model, X_test, y_test)
 
-    # 6. SHAP可解释性分析（传入X_train和特征名称）
-    shap_interpretation(final_model, X_train, X_test, feature_names)
+    # 6. SHAP 可解释性分析（传入 X_train / y_train / 特征名称）
+    if not args.no_shap:
+        shap_interpretation(final_model, X_train, y_train, X_test, feature_names)
+
+    # 7. 导出 results.json（记录配置与核心指标，便于复现与汇报）
+    results = {
+        "project": "credit-card-fraud-detection",
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "config": {
+            "seed": SEED,
+            "data_mode": "uci-real" if args.real_data else "simulated",
+            "test_size": 0.2,
+            "resampling": "SMOTE↑ + RandomUnderSampler↓ (train only)",
+            "model": "Stacking(RF + GBDT + LR) -> meta LR",
+        },
+        "metrics": metrics,
+        "note": "模拟数据下 3% 欺诈率，刻意构造难分样本以贴近真实欺诈检测场景；"
+                "AUC 为稳健主指标，PR-AUC 在极端不平衡下天然偏低。",
+    }
+    results_path = os.path.join(OUTPUT_DIR, "results.json")
+    with open(results_path, "w", encoding="utf-8") as f:
+        json.dump(results, f, ensure_ascii=False, indent=2)
+    print(f"✅ 指标已导出：{results_path}")
+
+
+if __name__ == "__main__":
+    main()
 
     print("\n🎉 所有流程执行完成！生成文件：")
     print("   1. fraud_model_evaluation.png（模型评估图表）")

@@ -1,0 +1,20 @@
+{
+  "project": "credit-card-fraud-detection",
+  "generated_at": "2026-10-15T00:38:59",
+  "config": {
+    "seed": 42,
+    "data_mode": "simulated",
+    "test_size": 0.2,
+    "resampling": "SMOTE↑ + RandomUnderSampler↓ (train only)",
+    "model": "Stacking(RF + GBDT + LR) -> meta LR"
+  },
+  "metrics": {
+    "auc": 0.8569050687285223,
+    "pr_auc": 0.19147664558049116,
+    "best_f1_threshold": 0.15336521857286245,
+    "precision": 0.22439024390243903,
+    "recall": 0.38333333333333336,
+    "f1": 0.28307692307692306
+  },
+  "note": "模拟数据下 3% 欺诈率，刻意构造难分样本以贴近真实欺诈检测场景；AUC 为稳健主指标，PR-AUC 在极端不平衡下天然偏低。"
+}

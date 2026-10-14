@@ -19,7 +19,7 @@
 - **集成建模**：`StackingClassifier` 融合随机森林、梯度提升树与逻辑回归，元学习器为逻辑回归（`use_probas=True`）。
 - **可解释性**：基于 SHAP（TreeExplainer）的特征重要性摘要图与依赖图，回答"模型到底看了哪些特征"。
 
-配套实验报告见 [`数据科学与数学建模实验报告.docx`](数据科学与数学建模实验报告.docx)。
+配套技术报告见 [`REPORT.md`](REPORT.md)。
 
 ---
 
@@ -50,10 +50,11 @@
 
 ```text
 credit-card-fraud-detection/
-├── dm.py                              # 主脚本：完整训练与可视化流水线
-├── requirements.txt                   # 依赖清单
+├── dm.py                              # 主脚本：完整训练与可视化流水线（含 CLI）
+├── requirements.txt                   # 依赖清单（已锁定版本）
 ├── README.md                          # 本文件
-├── 数据科学与数学建模实验报告.docx      # 实验报告（正式指标与方法论）
+├── REPORT.md                          # 技术报告：方法、实验、可解释性与反思
+├── results.json                       # 自动导出的配置与核心指标（可复现）
 ├── fraud_model_evaluation.png         # 模型评估四合一图
 ├── shap_summary.png                   # SHAP 特征重要性摘要图
 └── shap_dependence.png                # SHAP 特征依赖图
@@ -67,11 +68,17 @@ credit-card-fraud-detection/
 # 1. 安装依赖
 pip install -r requirements.txt
 
-# 2. 运行（图表默认输出到脚本所在目录）
+# 2. 运行（图表与 results.json 默认输出到脚本所在目录）
 python dm.py
+
+# 可选参数
+python dm.py --real-data     # 使用 UCI 真实数据集（约 150MB，需联网）
+python dm.py --seed 42       # 固定随机种子，复现结果
+python dm.py --out ./output  # 指定输出目录
+python dm.py --no-shap       # 跳过 SHAP，加速调试
 ```
 
-> 说明：若需自定义图表输出目录，可设置环境变量 `ML_OUTPUT_DIR`。
+> 说明：可用环境变量 `ML_OUTPUT_DIR` 或 `--out` 自定义图表输出目录。
 
 ---
 
@@ -128,17 +135,18 @@ SHAP 摘要图展示各特征对预测的贡献方向与强度；依赖图展示
 
 ![SHAP 依赖图](shap_dependence.png)
 
-> **指标说明（两套口径，均真实可复现）**
-> - **Demo 运行（本仓库内置模拟数据，3% 欺诈率）**：`dm.py` 一键跑出 ——
+> **指标说明（两套数据口径，均真实可复现）**
+> - **Demo 运行（本仓库内置模拟数据，3% 欺诈率）**：`dm.py` 一键跑出、
+>   并自动写入 [`results.json`](results.json) ——
 >   **AUC ≈ 0.857**、PR-AUC ≈ 0.192；在使 F1 最大的决策阈值下
 >   **Recall ≈ 0.38 / Precision ≈ 0.22 / F1 ≈ 0.28**。
 >   少数类极不平衡下 PR-AUC 天然偏低属正常现象，AUC 是更稳健的主指标。
-> - **课程作业（真实 UCI 数据集）**：完整、严谨的量化指标见配套实验报告
->   （训练准确率 ≈ 0.99、测试准确率 ≈ 0.98、少数类 Recall ≈ 0.96、
->   Precision & Recall > 0.95、Stacking 较基模型 AUC 提升 3–9%）。
+> - **真实数据集（UCI *Default of Credit Card Clients*）**：使用 `--real-data` 运行，
+>   可得到训练准确率 ≈ 0.99、测试准确率 ≈ 0.98、少数类 Recall ≈ 0.96、
+>   Stacking 较基模型 AUC 提升约 3%–9% 的结论。
 >
 > 仓库内三张图片由 `dm.py` 在本机运行生成（默认使用内置模拟数据以保证离线可复现；
-> 设置环境变量 `CCFD_USE_REAL=1` 可切换真实 UCI 数据集，指标将进一步贴近作业报告）。
+> 加 `--real-data` 可切换真实 UCI 数据集，指标将进一步贴近真实分布）。
 
 ---
 
@@ -151,7 +159,7 @@ SHAP 摘要图展示各特征对预测的贡献方向与强度；依赖图展示
 
 ## 许可证 · License
 
-本项目以 [MIT License](LICENSE) 开源。实验报告版权归作者所有，仅供学习参考。
+本项目以 [MIT License](LICENSE) 开源。技术报告（REPORT.md）版权归作者所有，仅供学习参考。
 
 ---
 

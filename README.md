@@ -19,7 +19,7 @@
 - **集成建模**：`StackingClassifier` 融合随机森林、梯度提升树与逻辑回归，元学习器为逻辑回归（`use_probas=True`）。
 - **可解释性**：基于 SHAP（TreeExplainer）的特征重要性摘要图与依赖图，回答"模型到底看了哪些特征"。
 
-配套技术报告见 [`REPORT.md`](REPORT.md)。
+配套技术报告见 [`REPORT.md`](REPORT.md)，模型卡（用途/指标/伦理/局限）见 [`MODEL_CARD.md`](MODEL_CARD.md)。
 
 ---
 
@@ -54,6 +54,7 @@ credit-card-fraud-detection/
 ├── requirements.txt                   # 依赖清单（已锁定版本）
 ├── README.md                          # 本文件
 ├── REPORT.md                          # 技术报告：方法、实验、可解释性与反思
+├── MODEL_CARD.md                      # 模型卡：预期用途、指标、伦理与局限
 ├── results.json                       # 自动导出的配置与核心指标（可复现）
 ├── fraud_model_evaluation.png         # 模型评估四合一图
 ├── shap_summary.png                   # SHAP 特征重要性摘要图
